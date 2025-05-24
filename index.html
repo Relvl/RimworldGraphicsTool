@@ -1,189 +1,333 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RimWorld GraphicData Tool</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RimWorld GraphicData Tool (React)</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script crossorigin src="https://unpkg.com/babel-standalone@6.26.0/babel.min.js"></script>
     <style>
-        body { font-family: sans-serif; margin: 20px; }
-        canvas { border: 1px solid #ccc; background: #f0f0f0; display: block; margin-bottom: 10px; }
-        .controls { margin-top: 10px; }
-        .controls label { display: block; margin: 5px 0; }
-        textarea { width: 100%; height: 120px; margin-top: 10px; }
-        button { margin-top: 5px; padding: 5px 10px; }
-        #preview { margin-top: 10px; padding: 10px; border: 1px dashed #aaa; background: #fafafa; white-space: pre-wrap; }
-        .inline { display: inline-block; margin-left: 10px; }
+        :root {
+            --bg: #ffffff;
+            --fg: #222;
+            --border: #ddd;
+            --accent: #4285f4;
+            --light: #f9f9f9;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--fg);
+        }
+
+        #root {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        canvas {
+            border: 1px solid var(--border);
+            background: #fafafa;
+            display: block;
+            margin-bottom: 20px;
+            max-width: 100%;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .controls label {
+            background: var(--light);
+            border: 1px solid var(--border);
+            padding: 10px;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            font-size: 0.95rem;
+        }
+
+        input[type="number"], input[type="file"], textarea {
+            flex: 1 1 0;
+            min-width: 0;
+            font-family: monospace;
+            padding: 5px;
+            font-size: 1rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            margin-top: 5px;
+        }
+
+        input[type="checkbox"] {
+            transform: scale(1.2);
+        }
+
+        button {
+            padding: 8px 14px;
+            background: var(--accent);
+            border: none;
+            color: white;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #3367d6;
+        }
+
+        textarea {
+            width: 100%;
+            height: 120px;
+            margin-top: 10px;
+            border-radius: 6px;
+            resize: vertical;
+            background: #fff;
+        }
+
+        #preview {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px dashed var(--border);
+            background: #f4f4f4;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+
+        .inline {
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        body.dragover {
+            background-color: #eef;
+        }
     </style>
 </head>
 <body>
-<h1>RimWorld GraphicData Tool</h1>
-<p>Загрузите спрайт, настройте <code>drawSize</code>, <code>drawOffset</code> и размер сетки (width/height), чтобы проверить, как он ложится на клетки RimWorld. Также ниже вы можете увидеть предварительный просмотр полного блока <code>ThingDef</code>.</p>
+<div id="root"></div>
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
 
-<input type="file" id="imageLoader" accept="image/*">
-<br><br>
-<canvas id="canvas" width="512" height="512"></canvas>
+    function CanvasPreview({ sprite, gridWidth, gridHeight, drawSizeX, drawSizeY, drawOffsetX, drawOffsetZ, scale }) {
+        const canvasRef = useRef(null);
 
-<div class="controls">
-    <label>Grid Width (cells): <input type="number" id="gridWidth" value="1" step="1" min="1">
-        <span class="inline"><input type="checkbox" id="syncGrid"> Синхронизировать с Height</span>
-    </label>
-    <label>Grid Height (cells): <input type="number" id="gridHeight" value="1" step="1" min="1"></label>
+        useEffect(() => {
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    <label>drawSize X: <input type="number" id="drawSizeX" value="1" step="0.1"></label>
-    <label>drawSize Y: <input type="number" id="drawSizeY" value="1" step="0.1">
-        <span class="inline"><input type="checkbox" id="syncDrawSize"> Синхронизировать с X</span>
-    </label>
+            const tileSize = 64 * scale;
+            const gridPixelWidth = gridWidth * tileSize;
+            const gridPixelHeight = gridHeight * tileSize;
+            const gridStartX = canvas.width / 2 - gridPixelWidth / 2;
+            const gridStartY = canvas.height / 2 - gridPixelHeight / 2;
 
-    <label>drawOffset X: <input type="number" id="drawOffsetX" value="0" step="0.1"></label>
-    <label>drawOffset Z: <input type="number" id="drawOffsetZ" value="0" step="0.1"></label>
-</div>
+            ctx.strokeStyle = '#999';
+            ctx.lineWidth = 1;
+            for (let x = 0; x <= gridWidth; x++) {
+                ctx.beginPath();
+                ctx.moveTo(gridStartX + x * tileSize, gridStartY);
+                ctx.lineTo(gridStartX + x * tileSize, gridStartY + gridPixelHeight);
+                ctx.stroke();
+            }
+            for (let y = 0; y <= gridHeight; y++) {
+                ctx.beginPath();
+                ctx.moveTo(gridStartX, gridStartY + y * tileSize);
+                ctx.lineTo(gridStartX + gridPixelWidth, gridStartY + y * tileSize);
+                ctx.stroke();
+            }
 
-<button id="exportButton">Скопировать XML</button>
-<textarea id="xmlOutput" readonly></textarea>
+            if (!sprite) return;
+            const scaledWidth = drawSizeX * tileSize;
+            const scaledHeight = drawSizeY * tileSize;
+            const centerX = canvas.width / 2 + drawOffsetX * tileSize;
+            const centerY = canvas.height / 2 - drawOffsetZ * tileSize;
 
-<div id="preview"></div>
+            ctx.drawImage(sprite, centerX - scaledWidth / 2, centerY - scaledHeight / 2, scaledWidth, scaledHeight);
+        }, [sprite, gridWidth, gridHeight, drawSizeX, drawSizeY, drawOffsetX, drawOffsetZ, scale]);
 
-<script>
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const imageLoader = document.getElementById('imageLoader');
-    const xmlOutput = document.getElementById('xmlOutput');
-    const exportButton = document.getElementById('exportButton');
-    const preview = document.getElementById('preview');
-    const syncDrawCheckbox = document.getElementById('syncDrawSize');
-    const syncGridCheckbox = document.getElementById('syncGrid');
-
-    let sprite = null;
-    let texPath = "Things/Building/MyCustomSprite";
-
-    imageLoader.addEventListener('change', function(e) {
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            sprite = new Image();
-            sprite.onload = draw;
-            sprite.src = event.target.result;
-        }
-        reader.readAsDataURL(e.target.files[0]);
-    });
-
-    document.getElementById('drawSizeX').addEventListener('input', () => {
-        if (syncDrawCheckbox.checked) {
-            document.getElementById('drawSizeY').value = document.getElementById('drawSizeX').value;
-        }
-        draw();
-        updateXML();
-    });
-
-    document.getElementById('drawSizeY').addEventListener('input', () => {
-        if (syncDrawCheckbox.checked) {
-            document.getElementById('drawSizeX').value = document.getElementById('drawSizeY').value;
-        }
-        draw();
-        updateXML();
-    });
-
-    document.getElementById('gridWidth').addEventListener('input', () => {
-        if (syncGridCheckbox.checked) {
-            document.getElementById('gridHeight').value = document.getElementById('gridWidth').value;
-        }
-        draw();
-        updateXML();
-    });
-
-    document.getElementById('gridHeight').addEventListener('input', () => {
-        if (syncGridCheckbox.checked) {
-            document.getElementById('gridWidth').value = document.getElementById('gridHeight').value;
-        }
-        draw();
-        updateXML();
-    });
-
-    const controls = ['drawOffsetX', 'drawOffsetZ'];
-    controls.forEach(id => document.getElementById(id).addEventListener('input', () => {
-        draw();
-        updateXML();
-    }));
-
-    function draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        const gridWidth = parseInt(document.getElementById('gridWidth').value);
-        const gridHeight = parseInt(document.getElementById('gridHeight').value);
-
-        const tileSize = 64;
-        const gridPixelWidth = gridWidth * tileSize;
-        const gridPixelHeight = gridHeight * tileSize;
-
-        const gridStartX = canvas.width / 2 - gridPixelWidth / 2;
-        const gridStartY = canvas.height / 2 - gridPixelHeight / 2;
-
-        ctx.strokeStyle = '#999';
-        ctx.lineWidth = 1;
-        for (let x = 0; x <= gridWidth; x++) {
-            ctx.beginPath();
-            ctx.moveTo(gridStartX + x * tileSize, gridStartY);
-            ctx.lineTo(gridStartX + x * tileSize, gridStartY + gridPixelHeight);
-            ctx.stroke();
-        }
-        for (let y = 0; y <= gridHeight; y++) {
-            ctx.beginPath();
-            ctx.moveTo(gridStartX, gridStartY + y * tileSize);
-            ctx.lineTo(gridStartX + gridPixelWidth, gridStartY + y * tileSize);
-            ctx.stroke();
-        }
-
-        if (!sprite) return;
-
-        const drawSizeX = parseFloat(document.getElementById('drawSizeX').value);
-        const drawSizeY = parseFloat(document.getElementById('drawSizeY').value);
-        const drawOffsetX = parseFloat(document.getElementById('drawOffsetX').value) * tileSize;
-        const drawOffsetZ = parseFloat(document.getElementById('drawOffsetZ').value) * tileSize;
-
-        const scaledWidth = sprite.width * drawSizeX;
-        const scaledHeight = sprite.height * drawSizeY;
-
-        const centerX = canvas.width / 2 + drawOffsetX;
-        const centerY = canvas.height / 2 - drawOffsetZ;
-
-        ctx.drawImage(sprite, centerX - scaledWidth / 2, centerY - scaledHeight / 2, scaledWidth, scaledHeight);
+        return <canvas ref={canvasRef} width={512} height={512} />;
     }
 
-    function updateXML() {
-        const drawSizeX = document.getElementById('drawSizeX').value;
-        const drawSizeY = document.getElementById('drawSizeY').value;
-        const drawOffsetX = document.getElementById('drawOffsetX').value;
-        const drawOffsetZ = document.getElementById('drawOffsetZ').value;
+    function App() {
+        const [sprite, setSprite] = useState(null);
+        const [scale] = useState(1);
+        const [texPath] = useState("Things/Building/MyCustomSprite");
+        const [gridWidth, setGridWidth] = useState(+localStorage.getItem('gridWidth') || 1);
+        const [gridHeight, setGridHeight] = useState(+localStorage.getItem('gridHeight') || 1);
+        const [syncGrid, setSyncGrid] = useState(localStorage.getItem('syncGrid') === 'true');
+        const [drawSizeX, setDrawSizeX] = useState(+localStorage.getItem('drawSizeX') || 1);
+        const [drawSizeY, setDrawSizeY] = useState(+localStorage.getItem('drawSizeY') || 1);
+        const [syncDraw, setSyncDraw] = useState(localStorage.getItem('syncDrawSize') === 'true');
+        const [drawOffsetX, setDrawOffsetX] = useState(+localStorage.getItem('drawOffsetX') || 0);
+        const [drawOffsetZ, setDrawOffsetZ] = useState(+localStorage.getItem('drawOffsetZ') || 0);
+        const [xml, setXml] = useState('');
+        const [thingDef, setThingDef] = useState('');
 
-        const xml = `<graphicData>\n` +
-            `  <texPath>${texPath}</texPath>\n` +
-            `  <drawSize>(${drawSizeX}, ${drawSizeY})</drawSize>\n` +
-            `  <drawOffset>(${drawOffsetX}, 0, ${-drawOffsetZ})</drawOffset>\n` +
-            `</graphicData>`;
-        xmlOutput.value = xml;
+        useEffect(() => {
+            const savedImage = localStorage.getItem('lastImage');
+            if (savedImage) {
+                const img = new Image();
+                img.onload = () => setSprite(img);
+                img.src = savedImage;
+            }
+        }, []);
 
-        const thingDef = `<ThingDef ParentName="BuildingBase">\n` +
-            `  <defName>MyCustomBuilding</defName>\n` +
-            `  <label>custom building</label>\n` +
-            `  <graphicData>\n` +
-            `    <texPath>${texPath}</texPath>\n` +
-            `    <drawSize>(${drawSizeX}, ${drawSizeY})</drawSize>\n` +
-            `    <drawOffset>(${drawOffsetX}, 0, ${-drawOffsetZ})</drawOffset>\n` +
-            `  </graphicData>\n` +
-            `  <size>(${document.getElementById('gridWidth').value}, ${document.getElementById('gridHeight').value})</size>\n` +
-            `</ThingDef>`;
+        useEffect(() => {
+            localStorage.setItem('gridWidth', gridWidth);
+            if (syncGrid) {
+                setGridHeight(gridWidth);
+                localStorage.setItem('gridHeight', gridWidth);
+            }
+        }, [gridWidth]);
 
-        preview.textContent = thingDef;
+        useEffect(() => {
+            localStorage.setItem('gridHeight', gridHeight);
+            if (syncGrid) {
+                setGridWidth(gridHeight);
+                localStorage.setItem('gridWidth', gridHeight);
+            }
+        }, [gridHeight]);
+
+        useEffect(() => localStorage.setItem('syncGrid', syncGrid), [syncGrid]);
+        useEffect(() => localStorage.setItem('syncDrawSize', syncDraw), [syncDraw]);
+
+        useEffect(() => {
+            localStorage.setItem('drawSizeX', drawSizeX);
+            localStorage.setItem('drawSizeY', drawSizeY);
+            localStorage.setItem('drawOffsetX', drawOffsetX);
+            localStorage.setItem('drawOffsetZ', drawOffsetZ);
+            const xmlStr = `<graphicData>\n  <texPath>${texPath}</texPath>\n  <drawSize>(${drawSizeX}, ${drawSizeY})</drawSize>\n  <drawOffset>(${drawOffsetX}, 0, ${-drawOffsetZ})</drawOffset>\n</graphicData>`;
+            const thing = `<ThingDef ParentName="BuildingBase">\n  <defName>MyCustomBuilding</defName>\n  <label>custom building</label>\n  <graphicData>\n    <texPath>${texPath}</texPath>\n    <drawSize>(${drawSizeX}, ${drawSizeY})</drawSize>\n    <drawOffset>(${drawOffsetX}, 0, ${-drawOffsetZ})</drawOffset>\n  </graphicData>\n  <size>(${gridWidth}, ${gridHeight})</size>\n</ThingDef>`;
+            setXml(xmlStr);
+            setThingDef(thing);
+        }, [texPath, drawSizeX, drawSizeY, drawOffsetX, drawOffsetZ, gridWidth, gridHeight]);
+
+        function handleFileChange(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = event => {
+                const img = new Image();
+                img.onload = () => setSprite(img);
+                img.src = event.target.result;
+                localStorage.setItem('lastImage', img.src);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            document.body.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) handleFileChange({ target: { files: e.dataTransfer.files } });
+        }
+
+        useEffect(() => {
+            const handleDragOver = e => { e.preventDefault(); document.body.classList.add('dragover'); };
+            const handleDragLeave = () => document.body.classList.remove('dragover');
+            window.addEventListener('dragover', handleDragOver);
+            window.addEventListener('dragleave', handleDragLeave);
+            window.addEventListener('drop', handleDrop);
+            return () => {
+                window.removeEventListener('dragover', handleDragOver);
+                window.removeEventListener('dragleave', handleDragLeave);
+                window.removeEventListener('drop', handleDrop);
+            };
+        }, []);
+
+        return (
+            <div>
+                <h1 style={{ marginBottom: '1rem' }}>RimWorld GraphicData Tool (React)</h1>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '20px' }}>
+                    <input id="spriteInput" type="file" accept="image/*" onChange={handleFileChange} style={{ display: 'none' }} />
+                    <label htmlFor="spriteInput" style={{ cursor: 'pointer' }}>
+                        <span style={{ padding: '8px 14px', background: 'var(--accent)', color: 'white', borderRadius: '6px' }}>Выбрать изображение</span>
+                    </label>
+                    <span style={{ fontStyle: 'italic' }}>{localStorage.getItem('lastImage') ? 'Загружен сохранённый спрайт' : ''}</span>
+                </div>
+
+                <CanvasPreview
+                    sprite={sprite}
+                    gridWidth={gridWidth}
+                    gridHeight={gridHeight}
+                    drawSizeX={drawSizeX}
+                    drawSizeY={drawSizeY}
+                    drawOffsetX={drawOffsetX}
+                    drawOffsetZ={drawOffsetZ}
+                    scale={scale}
+                />
+
+                <div className="controls">
+                    <label>
+                        Grid Size (X, Y):
+                        <div className="inline">
+                            <input type="number" value={gridWidth} onChange={e => setGridWidth(Number(e.target.value))} />
+                            <input type="number" value={gridHeight} onChange={e => setGridHeight(Number(e.target.value))} />
+                        </div>
+                        <span className="inline">
+                <input type="checkbox" checked={syncGrid} onChange={e => setSyncGrid(e.target.checked)} /> Синхронизировать
+              </span>
+                    </label>
+
+                    <label>
+                        drawSize (X, Y):
+                        <div className="inline">
+                            <input type="number" value={drawSizeX} step="0.1" onChange={e => {
+                                const val = Number(e.target.value);
+                                setDrawSizeX(val);
+                                if (syncDraw) setDrawSizeY(val);
+                            }} />
+                            <input type="number" value={drawSizeY} step="0.1" onChange={e => {
+                                const val = Number(e.target.value);
+                                setDrawSizeY(val);
+                                if (syncDraw) setDrawSizeX(val);
+                            }} />
+                        </div>
+                        <span className="inline">
+                <input type="checkbox" checked={syncDraw} onChange={e => setSyncDraw(e.target.checked)} /> Синхронизировать
+              </span>
+                    </label>
+
+                    <label>
+                        drawOffset (X, Z):
+                        <div className="inline">
+                            <input type="number" value={drawOffsetX} step="0.1" onChange={e => setDrawOffsetX(Number(e.target.value))} />
+                            <input type="number" value={drawOffsetZ} step="0.1" onChange={e => setDrawOffsetZ(Number(e.target.value))} />
+                        </div>
+                    </label>
+                </div>
+
+                <textarea readOnly value={xml}></textarea>
+                <div id="preview">{thingDef}</div>
+            </div>
+        );
     }
 
-    exportButton.addEventListener('click', () => {
-        updateXML();
-        xmlOutput.select();
-        document.execCommand('copy');
-        alert('XML скопирован в буфер обмена!');
-    });
-
-    draw();
-    updateXML();
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
 </html>
