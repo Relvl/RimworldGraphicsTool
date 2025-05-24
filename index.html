@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RimWorld GraphicData Tool</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        canvas { border: 1px solid #ccc; background: #f0f0f0; display: block; margin-bottom: 10px; }
+        .controls { margin-top: 10px; }
+        .controls label { display: block; margin: 5px 0; }
+        textarea { width: 100%; height: 120px; margin-top: 10px; }
+        button { margin-top: 5px; padding: 5px 10px; }
+        #preview { margin-top: 10px; padding: 10px; border: 1px dashed #aaa; background: #fafafa; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+<h1>RimWorld GraphicData Tool</h1>
+<p>Загрузите спрайт, настройте <code>drawSize</code>, <code>drawOffset</code> и размер сетки (width/height), чтобы проверить, как он ложится на клетки RimWorld. Также ниже вы можете увидеть предварительный просмотр полного блока <code>ThingDef</code>.</p>
+
+<input type="file" id="imageLoader" accept="image/*">
+<br><br>
+<canvas id="canvas" width="512" height="512"></canvas>
+
+<div class="controls">
+    <label>Grid Width (cells): <input type="number" id="gridWidth" value="1" step="1" min="1"></label>
+    <label>Grid Height (cells): <input type="number" id="gridHeight" value="1" step="1" min="1"></label>
+
+    <label>drawSize X: <input type="number" id="drawSizeX" value="1" step="0.1"></label>
+    <label>drawSize Y: <input type="number" id="drawSizeY" value="1" step="0.1"></label>
+    <label>drawOffset X: <input type="number" id="drawOffsetX" value="0" step="0.1"></label>
+    <label>drawOffset Z: <input type="number" id="drawOffsetZ" value="0" step="0.1"></label>
+</div>
+
+<button id="exportButton">Скопировать XML</button>
+<textarea id="xmlOutput" readonly></textarea>
+
+<div id="preview"></div>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const imageLoader = document.getElementById('imageLoader');
+    const xmlOutput = document.getElementById('xmlOutput');
+    const exportButton = document.getElementById('exportButton');
+    const preview = document.getElementById('preview');
+
+    let sprite = null;
+    let texPath = "Things/Building/MyCustomSprite";
+
+    imageLoader.addEventListener('change', function(e) {
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            sprite = new Image();
+            sprite.onload = draw;
+            sprite.src = event.target.result;
+        }
+        reader.readAsDataURL(e.target.files[0]);
+    });
+
+    const controls = ['gridWidth', 'gridHeight', 'drawSizeX', 'drawSizeY', 'drawOffsetX', 'drawOffsetZ'];
+    controls.forEach(id => document.getElementById(id).addEventListener('input', () => {
+        draw();
+        updateXML();
+    }));
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const gridWidth = parseInt(document.getElementById('gridWidth').value);
+        const gridHeight = parseInt(document.getElementById('gridHeight').value);
+
+        const tileSize = 64;
+        const gridPixelWidth = gridWidth * tileSize;
+        const gridPixelHeight = gridHeight * tileSize;
+
+        const gridStartX = canvas.width / 2 - gridPixelWidth / 2;
+        const gridStartY = canvas.height / 2 - gridPixelHeight / 2;
+
+        ctx.strokeStyle = '#999';
+        ctx.lineWidth = 1;
+        for (let x = 0; x <= gridWidth; x++) {
+            ctx.beginPath();
+            ctx.moveTo(gridStartX + x * tileSize, gridStartY);
+            ctx.lineTo(gridStartX + x * tileSize, gridStartY + gridPixelHeight);
+            ctx.stroke();
+        }
+        for (let y = 0; y <= gridHeight; y++) {
+            ctx.beginPath();
+            ctx.moveTo(gridStartX, gridStartY + y * tileSize);
+            ctx.lineTo(gridStartX + gridPixelWidth, gridStartY + y * tileSize);
+            ctx.stroke();
+        }
+
+        if (!sprite) return;
+
+        const drawSizeX = parseFloat(document.getElementById('drawSizeX').value);
+        const drawSizeY = parseFloat(document.getElementById('drawSizeY').value);
+        const drawOffsetX = parseFloat(document.getElementById('drawOffsetX').value) * tileSize;
+        const drawOffsetZ = parseFloat(document.getElementById('drawOffsetZ').value) * tileSize;
+
+        const scaledWidth = sprite.width * drawSizeX;
+        const scaledHeight = sprite.height * drawSizeY;
+
+        const centerX = canvas.width / 2 + drawOffsetX;
+        const centerY = canvas.height / 2 - drawOffsetZ;
+
+        ctx.drawImage(sprite, centerX - scaledWidth / 2, centerY - scaledHeight / 2, scaledWidth, scaledHeight);
+    }
+
+    function updateXML() {
+        const drawSizeX = document.getElementById('drawSizeX').value;
+        const drawSizeY = document.getElementById('drawSizeY').value;
+        const drawOffsetX = document.getElementById('drawOffsetX').value;
+        const drawOffsetZ = document.getElementById('drawOffsetZ').value;
+
+        const xml = `<graphicData>\n` +
+            `  <texPath>${texPath}</texPath>\n` +
+            `  <drawSize>(${drawSizeX}, ${drawSizeY})</drawSize>\n` +
+            `  <drawOffset>(${drawOffsetX}, 0, ${-drawOffsetZ})</drawOffset>\n` +
+            `</graphicData>`;
+        xmlOutput.value = xml;
+
+        const thingDef = `<ThingDef ParentName="BuildingBase">\n` +
+            `  <defName>MyCustomBuilding</defName>\n` +
+            `  <label>custom building</label>\n` +
+            `  <graphicData>\n` +
+            `    <texPath>${texPath}</texPath>\n` +
+            `    <drawSize>(${drawSizeX}, ${drawSizeY})</drawSize>\n` +
+            `    <drawOffset>(${drawOffsetX}, 0, ${-drawOffsetZ})</drawOffset>\n` +
+            `  </graphicData>\n` +
+            `  <size>(${document.getElementById('gridWidth').value}, ${document.getElementById('gridHeight').value})</size>\n` +
+            `</ThingDef>`;
+
+        preview.textContent = thingDef;
+    }
+
+    exportButton.addEventListener('click', () => {
+        updateXML();
+        xmlOutput.select();
+        document.execCommand('copy');
+        alert('XML скопирован в буфер обмена!');
+    });
+
+    // Initial draw and XML
+    draw();
+    updateXML();
+</script>
+</body>
+</html>
